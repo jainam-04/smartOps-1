@@ -1,0 +1,161 @@
+const workerService = require('../services/workerService');
+
+class WorkerController {
+  async getAllWorkers(req, res, next) {
+    try {
+      let workers = await workerService.getAllWorkers(req.query, req.user);
+      const userRole = req.user ? req.user.role : '';
+      const isAuthorized = userRole.toLowerCase() === 'owner' || userRole.toLowerCase() === 'supervisor';
+      
+      if (!isAuthorized) {
+        workers = workers.map(w => {
+          const obj = w.toObject ? w.toObject() : JSON.parse(JSON.stringify(w));
+          delete obj.salary;
+          return obj;
+        });
+      }
+      res.status(200).json({ success: true, count: workers.length, data: workers });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getWorkerById(req, res, next) {
+    try {
+      let worker = await workerService.getWorkerById(req.params.id);
+      const userRole = req.user ? req.user.role : '';
+      const isAuthorized = userRole.toLowerCase() === 'owner' || userRole.toLowerCase() === 'supervisor';
+      
+      if (!isAuthorized) {
+        const obj = worker.toObject ? worker.toObject() : JSON.parse(JSON.stringify(worker));
+        delete obj.salary;
+        worker = obj;
+      }
+      res.status(200).json({ success: true, data: worker });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async createWorker(req, res, next) {
+    try {
+      const userRole = req.user ? req.user.role : '';
+      const isAuthorized = userRole.toLowerCase() === 'owner' || userRole.toLowerCase() === 'supervisor';
+      
+      // If not authorized, block requests attempting to set the salary field
+      if (req.body.salary !== undefined && !isAuthorized) {
+        return res.status(403).json({
+          message: 'Access denied: Cannot edit salary'
+        });
+      }
+
+      let workerData = { ...req.body };
+      if (req.user && (userRole.toLowerCase() === 'supervisor' || userRole.toLowerCase() === 'manager')) {
+        workerData.branch = workerData.branch || req.user.branch || req.user.unit || 'Pune Head Office';
+        workerData.assignedSite = workerData.branch;
+      }
+
+      let worker = await workerService.createWorker(workerData);
+      
+      if (!isAuthorized) {
+        const obj = worker.toObject ? worker.toObject() : JSON.parse(JSON.stringify(worker));
+        delete obj.salary;
+        worker = obj;
+      }
+      res.status(201).json({ success: true, data: worker });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async updateWorker(req, res, next) {
+    try {
+      const userRole = req.user ? req.user.role : '';
+      const isAuthorized = userRole.toLowerCase() === 'owner' || userRole.toLowerCase() === 'supervisor';
+      
+      // If not authorized, block requests attempting to modify the salary field
+      if (req.body.salary !== undefined && !isAuthorized) {
+        return res.status(403).json({
+          message: 'Access denied: Cannot edit salary'
+        });
+      }
+
+      let worker = await workerService.updateWorker(req.params.id, req.body);
+      
+      if (!isAuthorized) {
+        const obj = worker.toObject ? worker.toObject() : JSON.parse(JSON.stringify(worker));
+        delete obj.salary;
+        worker = obj;
+      }
+      res.status(200).json({ success: true, data: worker });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async toggleWorkerStatus(req, res, next) {
+    try {
+      const { status } = req.body;
+      const worker = await workerService.toggleWorkerStatus(req.params.id, status || 'Active');
+      res.status(200).json({ success: true, data: worker });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async resetWorkerPassword(req, res, next) {
+    return res.status(403).json({
+      success: false,
+      error: 'Access Denied: Supervisors are not authorized to reset worker passwords directly. Workers must reset their password via self-service Forgot Password.'
+    });
+  }
+
+  async deleteWorker(req, res, next) {
+    try {
+      await workerService.deleteWorker(req.params.id);
+      res.status(200).json({ success: true, data: {} });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // Supervisor Pending Registration Methods
+  async getPendingRegistrations(req, res, next) {
+    try {
+      const pendingList = await workerService.getPendingRegistrations(req.user);
+      res.status(200).json({ success: true, count: pendingList.length, data: pendingList });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async approveRegistration(req, res, next) {
+    try {
+      const { salary } = req.body;
+      const result = await workerService.approveRegistration(req.params.id, salary, req.user);
+      res.status(200).json({ success: true, message: result.message, data: result });
+    } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ success: false, error: err.message, message: err.message });
+      }
+      next(err);
+    }
+  }
+
+  async rejectRegistration(req, res, next) {
+    try {
+      const { rejectionReason } = req.body;
+      const result = await workerService.rejectRegistration(req.params.id, rejectionReason, req.user);
+      res.status(200).json({ success: true, message: result.message, data: result });
+    } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ success: false, error: err.message, message: err.message });
+      }
+      next(err);
+    }
+  }
+}
+
+module.exports = new WorkerController();
+
+

@@ -1,0 +1,35 @@
+const mongoose = require('mongoose');
+const dns = require('dns');
+
+dns.setServers([
+  '1.1.1.1',
+  '8.8.8.8'
+])
+
+const connectDB = async () => {
+  const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  if (!uri) {
+    console.error('🔴 Error: Neither MONGO_URI nor MONGODB_URI is defined in the environment variables.');
+    process.exit(1);
+  }
+  const MAX_RETRIES = 5;
+  const RETRY_DELAY_MS = 3000;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const conn = await mongoose.connect(uri);
+      console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+      return;
+    } catch (error) {
+      console.error(`❌ MongoDB connection attempt ${attempt}/${MAX_RETRIES} failed: ${error.message}`);
+      if (attempt === MAX_RETRIES) {
+        console.error('🔴 Could not connect to MongoDB after max retries. Server will exit.');
+        process.exit(1);
+      }
+      console.log(`   Retrying in ${RETRY_DELAY_MS / 1000}s...`);
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+  }
+};
+
+module.exports = connectDB;
